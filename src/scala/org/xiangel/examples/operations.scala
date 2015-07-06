@@ -148,3 +148,15 @@ res70: Int = 1
 pData.take(5)
 //res71: Array[Int] = Array(1, 2, 3, 4, 5)
 
+val pData = sc.parallelize(List((1,2),(2,3),(2,4)))
+pData.countByKey()
+//res73: scala.collection.Map[Int,Long] = Map(2 -> 2, 1 -> 1)
+
+//foreach
+val accum = sc.accumulator(0,"My Accumulator")
+val pData = sc.parallelize(1 to 10)
+pData.foreach(x => accum += x)
+accum.value
+//scala> accum.value
+//res75: Int = 55
+
