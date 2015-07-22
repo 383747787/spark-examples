@@ -7,7 +7,7 @@ import scala.concurrent.duration.Duration
  */
 object Config {
 
-  val interval = System.getProperty("streaming.batch.interval", "60").toInt
+  val interval = System.getProperty("spark.mystreaming.batch.interval", "60").toInt
 
   val hbaseZkQuorum = ""
 }

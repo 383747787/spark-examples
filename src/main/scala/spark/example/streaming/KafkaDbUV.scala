@@ -11,7 +11,8 @@ import scalikejdbc._
 import scalikejdbc.config._
 import org.apache.spark.Logging
 import org.apache.log4j.{Level, Logger}
-import play.api.libs.json._
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
 import spark.example.utils.DBConnectionPool
 
 import scala.reflect.ClassTag
@@ -34,7 +35,7 @@ object KafkaDbUV extends Logging{
 
     val topicMap = topics.split(",").map((_, numThreads.toInt)).toMap
     val lines = KafkaUtils.createStream(ssc, zkQuorum, group, topicMap).map(_._2)
-    val words = lines.map(_.split("\t")(1)).map(line => Json.parse(line)\"_id").map(_.toString())
+    val words = lines.map(_.split("\t")(1)).map(line => compact(parse(line)\"_id")).map(_.toString())
     val pvDstream = words
 
     pvDstream.foreachRDD { rdd =>

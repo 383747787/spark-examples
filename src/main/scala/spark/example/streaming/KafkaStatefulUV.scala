@@ -12,7 +12,8 @@ import scalikejdbc._
 import scalikejdbc.config._
 import org.apache.spark.Logging
 import org.apache.log4j.{Level, Logger}
-import play.api.libs.json._
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
 import spark.example.utils.DBConnectionPool
 
 import scala.reflect.ClassTag
@@ -25,6 +26,8 @@ object KafkaStatefulUV extends Logging{
 
   def createContext(args: Array[String], checkpointDirectory:String): StreamingContext ={
     logInfo("creating new context")
+
+    implicit val formats = DefaultFormats
 
     val updateFunc = (users: Seq[String], state: Option[Set[String]]) => {
 
@@ -48,8 +51,8 @@ object KafkaStatefulUV extends Logging{
     val messages = KafkaUtils.createDirectStream[String, String, StringDecoder, StringDecoder](
       ssc, kafkaParams, topicsSet).map(_._2)
     val pageInfoDstream = messages.map(line => {
-      val result = Json.parse(line.trim)
-      ((result\"_id").as[String],new PageInfo((result\"_id").as[String],(result\"utm").as[String],(result\"timestamp").as[String]))
+      val result = parse(line.trim)
+      ((result \ "_id").extract[String],new PageInfo((result\"_id").extract[String],(result\"utm").extract[String],(result\"timestamp").extract[String]))
     })
 
     val userChannelDstream = pageInfoDstream.transform[(String,String)](getUserChannel)

@@ -11,7 +11,7 @@
 
     <properties>
         <java.version>1.7</java.version>
-        <scala.version>2.10.4</scala.version>
+        <scala.version>2.10.5</scala.version>
         <scala.binary.version>2.10</scala.binary.version>
         <spark.version>1.4.0</spark.version>
         <hbase.version>0.98.6</hbase.version>
@@ -68,6 +68,7 @@
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
             <version>${scala.version}</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.scalikejdbc</groupId>
@@ -78,11 +79,6 @@
             <groupId>com.twitter</groupId>
             <artifactId>algebird-core_${scala.binary.version}</artifactId>
             <version>0.10.2</version>
-        </dependency>
-        <dependency>
-            <groupId>com.typesafe.play</groupId>
-            <artifactId>play-json_${scala.binary.version}</artifactId>
-            <version>2.4.2</version>
         </dependency>
         <dependency>
             <groupId>org.scalikejdbc</groupId>
@@ -104,7 +100,11 @@
             <artifactId>slf4j-simple</artifactId>
             <version>1.7.12</version>
         </dependency>
-
+        <dependency>
+            <groupId>com.typesafe.play</groupId>
+            <artifactId>play-json_${scala.binary.version}</artifactId>
+            <version>2.3.9</version>
+        </dependency>
 
 
         <dependency>
@@ -117,7 +117,6 @@
             <artifactId>joda-time</artifactId>
             <version>2.8.1</version>
         </dependency>
-
     </dependencies>
 
     <build>
@@ -135,7 +134,7 @@
                 <!-- see http://davidb.github.com/scala-maven-plugin -->
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
-                <version>3.2.0</version>
+                <version>3.2.1</version>
                 <executions>
                     <execution>
                         <id>scala-compile-first</id>
@@ -158,6 +157,17 @@
                         </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <jvmArgs>
+                        <jvmArg>-XX:PermSize=64M</jvmArg>
+                        <jvmArg>-XX:MaxPermSize=128M</jvmArg>
+                        <jvmArg>-Xms64m</jvmArg>
+                        <jvmArg>-Xmx512m</jvmArg>
+                    </jvmArgs>
+                    <args>
+                        <arg>-Yresolve-term-conflict:object</arg>   <!-- required for package/object name conflict in Jenkins jar -->
+                    </args>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

@@ -6,7 +6,6 @@ import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkContext, SparkConf, Logging}
 import org.apache.spark.sql.SQLContext
 import org.joda.time.DateTime
-import play.api.libs.json.Json
 import scalikejdbc._
 import scalikejdbc.config._
 import spark.example.utils.DBConnectionPool
