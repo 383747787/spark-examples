@@ -27,6 +27,9 @@ object Kafkamb_pageinfo extends Logging{
   val ACTIVE_USER = "active.user"
   val ADD_USER = "add.user"
 
+  val NEWUSER="newuser"
+  val OLDUSER="olduser"
+
   def createContext(args: Array[String], checkpointDirectory:String): StreamingContext ={
     logInfo("creating new context")
 
@@ -56,11 +59,12 @@ object Kafkamb_pageinfo extends Logging{
     val pageinfoDstream = pageinfoOri.filter(!_._1.equals("deviceid:"))
     // 按ticks+appName分组排序，取starttime最小的记录
     // 然后从ticks_history_real表中取到初装时间和初装渠道
-    val channelUserVisitDstream = pageinfoDstream.transform(firstUserChannelFunc).transform(getUserInitialChannelFunc).cache()
+    val channelUserVisitDstream = pageinfoDstream.transform(firstUserChannelFunc)
+                                    .transform(getUserInitialChannelFunc).cache()
 
-    val (dayActiveUsers,dayAddUsers) = activeUser(channelUserVisitDstream)
+    val (dayActiveUsers,hourAddUsers) = activeUser(channelUserVisitDstream)
 
-    val dayUserDstream = dayActiveUsers.leftOuterJoin(dayAddUsers)
+    val dayUserDstream = dayActiveUsers.leftOuterJoin(hourAddUsers)
     saveDailyInfo(dayUserDstream)
     //channelUserVisitDstream.print
     ssc
@@ -126,23 +130,23 @@ object Kafkamb_pageinfo extends Logging{
           case None => {
             //如果是按jpid没有找到数据再按deviceid去找
             //如果找到了将找到的initDate和utm最为初装信息
-            val ticksHistory = if(!pageInfo.ticks.startsWith("deviceid:")){
+            val (ticksHistory,userType) = if(!pageInfo.ticks.startsWith("deviceid:")){
               val ticks1 = "deviceid:" + pageInfo.deviceId
               val result1 = ticksUtils.getTicksHistory(ticks1,pageInfo.appName,pageInfo.utm)
               result1 match {
-                case None => new TicksHistory(rowkey,pageInfo.starttime,pageInfo.utm)
-                case Some(v) => new TicksHistory(rowkey,v.initDate,v.utm)
+                case None => (new TicksHistory(rowkey,pageInfo.starttime,pageInfo.utm),NEWUSER)
+                case Some(v) => (new TicksHistory(rowkey,v.initDate,v.utm),OLDUSER)
               }
             }else {
-              new TicksHistory(rowkey,pageInfo.starttime,pageInfo.utm)
+              (new TicksHistory(rowkey,pageInfo.starttime,pageInfo.utm),NEWUSER)
             }
 
             ticksUtils.addTicksHistory(ticksHistory)
-            val newMbPageInfo = new MbPageInfo(pageInfo.ticks,pageInfo.starttime,ticksHistory.utm,pageInfo.os,pageInfo.appName,ticksHistory.initDate,pageInfo.deviceId)
+            val newMbPageInfo = new MbPageInfo(pageInfo.ticks,pageInfo.starttime,ticksHistory.utm,pageInfo.os,pageInfo.appName,userType,pageInfo.deviceId)
             newMbPageInfo
           }
           case Some(v) => {
-            new MbPageInfo(pageInfo.ticks,pageInfo.starttime,v.utm,pageInfo.os,pageInfo.appName,v.initDate,pageInfo.deviceId)
+            new MbPageInfo(pageInfo.ticks,pageInfo.starttime,v.utm,pageInfo.os,pageInfo.appName,OLDUSER,pageInfo.deviceId)
           }
         }
       }
@@ -163,20 +167,18 @@ object Kafkamb_pageinfo extends Logging{
     val mbPageInfosTime = mbPageInfos.map(mbPageInfo => (new ChannelInfo(mbPageInfo.os,mbPageInfo.appName,mbPageInfo.utm),Set(mbPageInfo.ticks)))
       .transform(addTime _).cache()
 
-    val addUserVisitTime = mbPageInfos.filter(mbPageInfo => isSameCycle(mbPageInfo.starttime.toLong,System.currentTimeMillis(),"day"))
+    val addUserVisitTime = mbPageInfos.filter(mbPageInfo => mbPageInfo.userType==NEWUSER)
       .map(mbPageInfo => (new ChannelInfo(mbPageInfo.os,mbPageInfo.appName,mbPageInfo.utm),Set(mbPageInfo.ticks)))
       .transform(addTime _)
 
-    val currActive = mbPageInfosTime.mapValues[(Long,Long)]{
-      case (t: Long, ticks:Set[String]) => (t, ticks.size.toLong)
-    }
     //Create the stream which includes state for 24 hours
     val dayActive = mbPageInfosTime.updateStateByKey(updateTotalCountStateDay)
       .mapValues[(Long,Long)]{
       case (t: Long, ticks:Set[String]) => (t, ticks.size.toLong)
     }
 
-    val dayAdd = addUserVisitTime.updateStateByKey(updateTotalCountStateDay)
+    // 统计每小时的新装用户数
+    val hourAdd = addUserVisitTime.updateStateByKey(updateTotalCountStateHour)
       .mapValues[(Long,Long)]{
       case (t: Long, ticks:Set[String]) => (t, ticks.size.toLong)
     }
@@ -187,7 +189,7 @@ object Kafkamb_pageinfo extends Logging{
       case (t: Long, ticks:Set[String]) => (t, ticks.size.toLong)
     }
 
-    (dayActive, dayAdd)
+    (dayActive, hourAdd)
   }
 
   val updateTotalCountStateDay = (values:Seq[(Long,Set[String])], state: Option[(Long,Set[String])]) => {
@@ -238,7 +240,7 @@ object Kafkamb_pageinfo extends Logging{
           val activeUserCnt = record._2._1._2
           val addUserCnt = record._2._2.getOrElse((0,0))._2
           DB localTx { implicit session =>
-            sql"replace into rpt.mb_users_daily_real(date,os,app_name,utm_id,active_users,new_users) values(${nowDate},${os},${appName},${utm},${activeUserCnt},${addUserCnt})".update.apply()
+            sql"replace into rpt.mb_users_daily_hour_real(date,os,app_name,utm_id,daily_active_users,new_users) values(${nowDate},${os},${appName},${utm},${activeUserCnt},${addUserCnt})".update.apply()
           }
         }
       }
@@ -258,19 +260,19 @@ object Kafkamb_pageinfo extends Logging{
 
     val checkpointDirectory = "Kafkamb_pageinfo_checkpoint"
     StreamingExamples.setStreamingLogLevels()
-    /*
+
     val ssc = StreamingContext.getOrCreate(checkpointDirectory,
       () => {
         createContext(args,checkpointDirectory)
       })
-*/
-    val ssc = createContext(args,checkpointDirectory)
+
+    //val ssc = createContext(args,checkpointDirectory)
     ssc.start()
     ssc.awaitTermination()
   }
 }
 
-case class MbPageInfo(ticks:String,starttime:String,utm:String,os:String,appName:String,guCreateTime:String,deviceId:String)
+case class MbPageInfo(ticks:String,starttime:String,utm:String,os:String,appName:String,userType:String,deviceId:String)
 
 case class TicksHistory(rowkey:String,initDate:String,utm:String)
 

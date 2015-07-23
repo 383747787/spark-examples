@@ -131,7 +131,7 @@
                 </configuration>
             </plugin>
             <plugin>
-                <!-- see http://davidb.github.com/scala-maven-plugin -->
+
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
                 <version>3.2.1</version>
@@ -165,7 +165,7 @@
                         <jvmArg>-Xmx512m</jvmArg>
                     </jvmArgs>
                     <args>
-                        <arg>-Yresolve-term-conflict:object</arg>   <!-- required for package/object name conflict in Jenkins jar -->
+                        <arg>-Yresolve-term-conflict:object</arg>
                     </args>
                 </configuration>
             </plugin>
